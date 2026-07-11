@@ -348,7 +348,7 @@ ETag: "6a4fdfd3-264"
 Accept-Ranges: bytes
 
 ✅ Статус: Nginx успешно запущен и отвечает HTTP‑кодом 200 OK на обоих серверах.
-
+```
 ---
   
 ![Проверка Nginx на сервере 1](https://github.com/user-attachments/assets/1055818b-d208-4c25-bc8a-72d47795a1a4)  
