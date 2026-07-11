@@ -347,7 +347,9 @@ Connection: keep-alive
 ETag: "6a4fdfd3-264"
 Accept-Ranges: bytes
 
+✅ Статус: Nginx успешно запущен и отвечает HTTP‑кодом 200 OK на обоих серверах.
 
+---
   
 ![Проверка Nginx на сервере 1](https://github.com/user-attachments/assets/1055818b-d208-4c25-bc8a-72d47795a1a4)  
 
@@ -355,9 +357,7 @@ Accept-Ranges: bytes
 ![Проверка Nginx на сервере 2](https://github.com/user-attachments/assets/83e778e3-4b21-4684-b374-6806bea9fcdb)
 
   
-
-✅ Статус: Nginx успешно запущен и отвечает HTTP‑кодом 200 OK на обоих серверах.
-
+---
 
 
 #### 3. Настройка балансировщика трафика (`alb.tf`)
