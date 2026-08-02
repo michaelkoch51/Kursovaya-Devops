@@ -1,0 +1,151 @@
+---
+# 1. ПОДГОТОВКА ВСЕХ СЕРВЕРОВ (Установка Docker и настройка зеркала для РФ)
+- name: Install Prerequisites on Logging Infrastructure
+  hosts: elasticsearch, kibana, web
+  become: true
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install Docker and Pip3
+      apt:
+        name:
+          - docker.io
+          - python3-pip
+        state: present
+
+    - name: Install Docker SDK for Python (Required for Ansible Docker modules)
+      pip:
+        name: docker
+        state: present
+
+    # ИСПРАВЛЕНИЕ ДЛЯ РФ: Настраиваем зеркало Docker Hub, чтобы обойти блокировки Elastic
+    - name: Configure Docker daemon mirror for Russia
+      copy:
+        dest: /etc/docker/daemon.json
+        content: |
+          {
+            "registry-mirrors": [
+              "https://yandex.ru",
+              "https://timeweb.cloud"
+            ]
+          }
+        mode: '0644'
+      notify: Restart Docker
+
+  handlers:
+    - name: Restart Docker
+      systemd:
+        name: docker
+        state: restarted
+
+# 2. РАЗВЕРТЫВАНИЕ БАЗЫ ЛОГОВ (ELASTICSEARCH)
+- name: Deploy Elasticsearch via Docker
+  hosts: elasticsearch
+  become: true
+  tasks:
+    - name: Set system memory limit for Elasticsearch (vm.max_map_count)
+      sysctl:
+        name: vm.max_map_count
+        value: "262144"
+        state: present
+        reload: yes
+
+    - name: Run Elasticsearch Container Idempotently
+      community.general.docker_container:
+        name: elasticsearch
+        image: elasticsearch:7.17.10
+        state: started
+        restart_policy: always
+        published_ports:
+          - "9200:9200"
+        env:
+          discovery.type: "single-node"
+          ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+
+    - name: Wait for Elasticsearch to become ready (Healthcheck)
+      uri:
+        url: "http://localhost:9200/_cluster/health"
+        status_code: 200
+      register: es_health
+      until: es_health.status == 200
+      retries: 20
+      delay: 5
+
+# 3. РАЗВЕРТЫВАНИЕ ВЕБ-ПАНЕЛИ (KIBANA)
+- name: Deploy Kibana via Docker
+  hosts: kibana
+  become: true
+  tasks:
+    - name: Run Kibana Container Idempotently
+      community.general.docker_container:
+        name: kibana
+        image: kibana:7.17.10
+        state: started
+        restart_policy: always
+        published_ports:
+          - "5601:5601"
+        env:
+          # ИСПРАВЛЕНИЕ: Исправлен синтаксис получения динамического IP Elasticsearch
+          ELASTICSEARCH_HOSTS: "http://{{ hostvars[groups['elasticsearch'][0]]['ansible_default_ipv4']['address'] }}:9200"
+
+# 4. УСТАНОВКА И НАСТРОЙКА СБОРЩИКА FILEBEAT НА ВЕБ-СЕРВЕРАХ (ЧЕРЕЗ DOCKER)
+- name: Install and Configure Filebeat via Docker
+  hosts: web
+  become: true
+  tasks:
+    - name: Ensure Filebeat configuration directory exists
+      file:
+        path: /etc/filebeat
+        state: directory
+        mode: '0755'
+
+    - name: Configure filebeat.yml with Dynamic Elasticsearch IP
+      copy:
+        dest: /etc/filebeat/filebeat.yml
+        content: |
+          filebeat.inputs:
+          - type: log
+            enabled: true
+            paths:
+              - /var/log/nginx/access.log
+              - /var/log/nginx/error.log
+            fields:
+              service: nginx
+
+          output.elasticsearch:
+            # ИСПРАВЛЕНИЕ: Исправлен синтаксис получения динамического IP Elasticsearch
+            hosts: ["{{ hostvars[groups['elasticsearch'][0]]['ansible_default_ipv4']['address'] }}:9200"]
+          
+          logging.level: info
+        mode: '0644'
+
+    - name: Run Filebeat Container Idempotently
+      community.general.docker_container:
+        name: filebeat
+        image: mirror.gcr.io/elastic/filebeat:7.17.10
+        state: started
+        restart_policy: always
+        network_mode: host
+        user: root
+        volumes:
+          - /etc/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+          - /var/log/nginx:/var/log/nginx:ro
+          - /var/lib/docker/containers:/var/lib/docker/containers:ro
+
+- name: Test Filebeat configuration
+  command: >
+    docker exec filebeat
+    filebeat test config
+    -c /usr/share/filebeat/filebeat.yml
+  changed_when: false
+
+- name: Test Filebeat connection
+  command: >
+    docker exec filebeat
+    filebeat test output
+    -c /usr/share/filebeat/filebeat.yml
+  changed_when: false
+
