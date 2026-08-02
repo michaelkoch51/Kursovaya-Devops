@@ -1,0 +1,58 @@
+---
+- name: Install Nginx and Prometheus Exporter via APT
+  hosts: web
+  become: true
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Ensure Nginx is installed
+      apt:
+        name: nginx
+        state: present
+
+    - name: Ensure configuration directory exists
+      file:
+        path: /etc/nginx/conf.d
+        state: directory
+        mode: '0755'
+
+    - name: Install Nginx Prometheus Exporter package
+      apt:
+        name: prometheus-nginx-exporter
+        state: present
+
+    - name: Enable stub_status on separate port 8080
+      copy:
+        dest: /etc/nginx/conf.d/stub_status.conf
+        content: |
+          server {
+              listen 8080;
+              server_name localhost;
+              location /stub_status {
+                  stub_status on;
+                  access_log off;
+                  allow 127.0.0.1;
+                  allow 10.0.0.0/8;
+                  deny all;
+              }
+          }
+
+    - name: Configure systemd for nginx-exporter to use port 8080
+      copy:
+        dest: /etc/default/prometheus-nginx-exporter
+        content: |
+          ARGS="-nginx.scrape-uri=http://127.0.0.1:8080/stub_status"
+
+    - name: Restart Nginx to apply status page
+      systemd:
+        name: nginx
+        state: restarted
+
+    - name: Restart Nginx Exporter service
+      systemd:
+        name: prometheus-nginx-exporter
+        state: restarted
+        enabled: yes
+
