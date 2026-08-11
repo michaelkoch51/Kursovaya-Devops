@@ -1,0 +1,11 @@
+---
+- name: Disable UFW on Web Servers
+  hosts: web
+  become: true
+  tasks:
+    - name: Disable firewall
+      systemd:
+        name: ufw
+        state: stopped
+        enabled: false
+

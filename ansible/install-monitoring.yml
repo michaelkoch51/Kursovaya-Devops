@@ -1,0 +1,128 @@
+---
+- name: Install Node Exporter on Web Servers
+  hosts: web
+  become: true
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+    - name: Install Node Exporter
+      apt:
+        name: prometheus-node-exporter
+        state: present
+    - name: Ensure Node Exporter is running and enabled
+      systemd:
+        name: prometheus-node-exporter
+        state: started
+        enabled: yes
+
+- name: Install and Configure Prometheus
+  hosts: prometheus
+  become: true
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+    - name: Install Prometheus
+      apt:
+        name: prometheus
+        state: present
+    - name: Configure prometheus.yml with dynamic IPs
+      copy:
+        dest: /etc/prometheus/prometheus.yml
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          global:
+            scrape_interval: 15s
+
+          scrape_configs:
+            - job_name: 'prometheus'
+              static_configs:
+                - targets: ['localhost:9090']
+
+            - job_name: 'web-servers'
+              static_configs:
+                - targets:
+                  # ИСПРАВЛЕНИЕ: Динамически собираем IP-адреса из группы хостов web
+                  {% for host in groups['web'] %}
+                  - '{{ hostvars[host]['ansible_default_ipv4']['address'] }}:9100'
+                  {% endfor %}
+
+            - job_name: 'nginx-servers'
+              static_configs:
+                - targets:
+                  # ИСПРАВЛЕНИЕ: Динамически собираем IP-адреса для Nginx Exporter
+                  {% for host in groups['web'] %}
+                  - '{{ hostvars[host]['ansible_default_ipv4']['address'] }}:9113'
+                  {% endfor %}
+
+    - name: Restart Prometheus to apply config
+      systemd:
+        name: prometheus
+        state: restarted
+        enabled: yes
+
+- name: Install and Auto-configure Grafana
+  hosts: grafana
+  become: true
+  tasks:
+    - name: Install prerequisites
+      apt:
+        name: ca-certificates
+        state: present
+
+    - name: Clean old broken download if exists
+      file:
+        path: /tmp/grafana.deb
+        state: absent
+
+    - name: Download Grafana deb package via wget
+      shell: |
+        wget -q \
+          https://dl.grafana.com/oss/release/grafana_11.2.1_amd64.deb \
+          -O /tmp/grafana.deb
+      args:
+        creates: /tmp/grafana.deb
+
+    - name: Install Grafana from deb file
+      apt:
+        deb: /tmp/grafana.deb
+
+    - name: Fix any missing dependencies
+      apt:
+        install_recommends: yes
+        autoclean: yes
+
+    - name: Enable and start Grafana
+      systemd:
+        name: grafana-server
+        enabled: yes
+        state: started
+
+    # ИСПРАВЛЕНИЕ: Автоматически создаем связь (Data Source) между Grafana и Prometheus
+    - name: Auto-provision Prometheus Data Source in Grafana
+      copy:
+        dest: /etc/grafana/provisioning/datasources/prometheus.yaml
+        owner: root
+        group: grafana
+        mode: "0640"
+        content: |
+          apiVersion: 1
+          datasources:
+            - name: Prometheus
+              type: prometheus
+              access: proxy
+              # Динамически подставляем приватный IP-адрес инстанса Prometheus
+              url: http://{{ hostvars[groups['prometheus'][0]]['ansible_default_ipv4']['address'] }}:9090
+              isDefault: true
+      notify: Restart Grafana
+
+  handlers:
+    - name: Restart Grafana
+      systemd:
+        name: grafana-server
+        state: restarted
+

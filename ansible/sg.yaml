@@ -1,0 +1,13 @@
+rules:
+  - direction: INGRESS
+    protocol: TCP
+    ports: [80]
+    cidrBlocks: ["0.0.0.0/0"]
+  - direction: INGRESS
+    protocol: TCP
+    ports: [443]
+    cidrBlocks: ["0.0.0.0/0"]
+  - direction: INGRESS
+    protocol: TCP
+    ports: [22]
+    cidrBlocks: ["10.0.0.0/24"]
