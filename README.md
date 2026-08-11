@@ -56,6 +56,34 @@
 
 В целях экономии, после успешного тестирования и фиксации результатов на скриншотах, активные облачные ресурсы были временно деактивированы через команду `terraform destroy`. Инфраструктура полностью готова к повторному развертыванию одной командой.*
 
+## Инструкция по развертыванию проекта с нуля
+
+### 1. Развертывание инфраструктуры (Terraform)
+Перейдите в директорию Terraform, подготовьте файл переменных и запустите сборку:
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars
+# Отредактируйте terraform.tfvars, указав свои приватные данные (токен, cloud_id, folder_id)
+terraform init
+terraform fmt -check -recursive
+terraform validate
+terraform plan
+terraform apply
+```
+
+### 2. Конфигурирование сервисов (Ansible)
+После успешного применения Terraform вернитесь в корень, установите зависимости и запустите плейбуки по очереди:
+```bash
+cd ../ansible
+ansible-galaxy collection install -r requirements.yml
+ansible all -i hosts.ini -m ping
+ansible-playbook -i hosts.ini install-web.yml
+ansible-playbook -i hosts.ini install-nginx-exporter.yml
+ansible-playbook -i hosts.ini install-monitoring.yml
+ansible-playbook -i hosts.ini install-logging.yml
+```
+
+
 
 ![Работающий сайт](https://github.com/user-attachments/assets/6e76b9a9-db80-4b1a-8138-9ba94490e8b1)
 ![Дашборд Grafana](https://github.com/user-attachments/assets/b7194914-2f80-4a4a-abe2-90ad1a2d7983)
