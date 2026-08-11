@@ -3,7 +3,6 @@ resource "yandex_alb_target_group" "web_tg" {
   name = "web-target-group"
 
   target {
-    # ИСПРАВЛЕНИЕ: Динамическая ссылка вместо "e9buf..."
     subnet_id  = yandex_vpc_subnet.ru-central1-a.id
     ip_address = yandex_compute_instance.web1.network_interface.0.ip_address
   }
@@ -61,13 +60,12 @@ resource "yandex_alb_load_balancer" "web_alb" {
   name               = "web-app-balancer"
   network_id         = yandex_vpc_network.main.id
   
-  # ИСПРАВЛЕНИЕ: Динамическая ссылка на группу безопасности вместо "enp4..."
-  security_group_ids = [yandex_vpc_security_group.web.id]
+  # ИСПРАВЛЕНО: Привязана выделенная группа безопасности для балансировщика
+  security_group_ids = [yandex_vpc_security_group.alb.id]
 
   allocation_policy {
     location {
       zone_id   = "ru-central1-a"
-      # ИСПРАВЛЕНИЕ: Динамическая ссылка вместо "e9buf..."
       subnet_id = yandex_vpc_subnet.ru-central1-a.id
     }
     location {
@@ -98,4 +96,3 @@ resource "yandex_alb_load_balancer" "web_alb" {
 output "balancer_public_ip" {
   value = yandex_alb_load_balancer.web_alb.listener.0.endpoint.0.address.0.external_ipv4_address.0.address
 }
-
